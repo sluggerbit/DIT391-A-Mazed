@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinWorkerThread;
@@ -39,6 +40,7 @@ public class ForkJoinSolver
     {
         super(maze);
         visited = new ConcurrentSkipListSet<>();
+        predecessor = new ConcurrentHashMap<Integer, Integer>();
     }
 
     /**
@@ -58,7 +60,7 @@ public class ForkJoinSolver
         this.forkAfter = forkAfter;
     }
 
-    volatile int count = 0;
+    int count = 0;
 
     /**
      * Searches for and returns the path, as a list of node
@@ -94,14 +96,11 @@ public class ForkJoinSolver
         if(!visited.contains(start)){ 
             cFrontier.push(start);
         } 
-        //ForkJoinSolver fork = new ForkJoinSolver(maze);
         List<ForkJoinSolver> forks = new ArrayList<>();
-        //ForkJoinPool pool = ForkJoinPool.commonPool();
         while(!cFrontier.isEmpty()){
             int current = cFrontier.pop();    
             count += 1;
-            
-            
+            int threadsToSpawn = 2;
             if(maze.hasGoal(current)){
                 maze.move(player, current);
                 return(pathFromTo(start, current));
@@ -109,66 +108,41 @@ public class ForkJoinSolver
 
             if(visited.add(current)){
                 maze.move(player, current);
-
+                
                 for (int nb: maze.neighbors(current)) {
-                    // add nb to the nodes to be processed
-                    //cFrontier.push(nb);
-                    if(count % 9 == 0){
-                        currentPath = pathFromTo(start, current);
-                        ForkJoinSolver fork = new ForkJoinSolver(maze, nb, forkAfter, visited);
+                    if(visited.contains(nb)) continue;
+                    
+                    if(count % 5 == 0){
+                        if (threadsToSpawn != 0){
+                            ForkJoinSolver fork = new ForkJoinSolver(maze, nb, forkAfter, visited);
+                            fork.fork();
                             forks.add(fork);
-                            fork.fork(); 
-                    } else
+                            threadsToSpawn--;
+                        }
+                    } else        
+                    // add nb to the nodes to be processed, 
+                    // not including the nodes used as start nodes for new forks        
                         cFrontier.push(nb);
                     
                     // if nb has not been already visited,
                     // nb can be reached from current (i.e., current is nb's predecessor)
                     if (!visited.contains(nb)){                      
                         predecessor.put(nb, current);
-                        //if(count % 3 == 0){ 
-                        //    ForkJoinSolver fork = new ForkJoinSolver(maze, nb, forkAfter, visited);
-                        //    forks.add(fork);
-                        //    fork.fork(); 
-                        //}
                     }
-                }
-                
-                if (count % 3 == 0){
-                //fork.fork();
-                }  
+                } 
+                if(count % 5 == 0){
+                    for (ForkJoinSolver fork : forks){
+                        List<Integer> path = fork.join();
+                        if(path != null){
+                            currentPath = pathFromTo(start, current);
+                            currentPath.addAll(path);
+                            return currentPath;
+                        }   
+                    }
+                    break;
+                } 
             } 
-        }
-
-
-        //List<Integer> path = fork.join();
-        //if(path != null)
-        //    return path;
-        /*
-        for (ForkJoinSolver fork : forks){
-                    List<Integer> path = fork.join();
-                    if(path != null){
-                        currentPath.addAll(path);
-                        return currentPath;
-                    }
-                        
-        }
-        */
-        while(true){
-            for(ForkJoinSolver fork : forks){
-                if(fork.isDone()){
-                    List<Integer> path = fork.join();
-                    if(path != null){
-                        //for(ForkJoinSolver fork2 : forks){
-                        //    if(fork2 != fork){
-                        //        fork.cancel(true);
-                        //    }
-                        //}
-                        currentPath.addAll(path);
-                        return currentPath;
-                    }
-                }
-            }
-            return null;
-        }
+        }   
+        return null;
     }
 }
