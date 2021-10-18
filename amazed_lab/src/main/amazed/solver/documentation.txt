@@ -1,0 +1,19 @@
+We first thought about which data structures should be shared, 
+and we arrived at the conclusion that "visited" would be the data structure most in need of concurrency.
+All players must have access to the nodes that are already visited so that they do not walk on these again.
+This structure needed to be thread safe because several nodes need to alter and access nodes,
+and might try to alter and/or access the same node at the same time, resulting in a race condition.
+Thus the part where we add a node to the visited skiplist is a critical section and we used the boolean from the 
+successful addition to the list to enter into the part where a node gets to move, fork and check for goals.  
+
+The "predecessor" map does not need to be thread safe since its elements are overridden each time the algorithm allows it. 
+This isn't a problem since we don't need to find the shortest path to the goal but would have been if that was the case.
+Each thread share a reference to it so they all can add to it.
+
+We could have used a concurrent deque for the "frontier" stack but there wasn't needed since each thread can operate with its
+own stack to keep track of which node to visit next (finding what to add using "visited"). 
+
+We decided to use the forkAfter variable so as to not create unneeded processes and be able to test different scenarios, 
+after forkAfter "steps" every node forks as many threads as there are unvisited neighbours. The neighbor is then the first element in the new fork's "frontier".
+These are added to a list where each child/fork is joined after a result has been returned, either a path to the goal or null.
+The forks return null if they exit the while loop, which exits if either no more neighbours are found or a fork has found the goal.
